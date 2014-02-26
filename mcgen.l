@@ -7,69 +7,69 @@
 %}
 
 %%
-[0-9]+			{
-				yylval.val = atoi(yytext) ;
-				return NUM ;
-			}
+[0-9]+				{
+					yylval.val = atoi(yytext) ;
+					return NUM ;
+				}
 
-[-+*/();,\[\]=><%]	return *yytext ;
+[-+*/();,=><%\[\]\(\)\{\}]	return *yytext ;
 
-"decl" 			return DECL ;
+"decl" 				return DECL ;
 
-"enddecl"		return ENDDECL ;
+"enddecl"			return ENDDECL ;
 
-"integer" 		return INTEGER ;
+"integer" 			return INTEGER ;
 
-"boolean"		return BOOLEAN ;
+"boolean"			return BOOLEAN ;
 
-"TRUE"			return TRUE ;
+"TRUE"				return TRUE ;
 
-"FALSE"			return FALSE ;
+"FALSE"				return FALSE ;
 
-"AND"			return AND ;
+"AND"				return AND ;
 
-"OR"			return OR ;
+"OR"				return OR ;
 
-"NOT"			return NOT ;
+"NOT"				return NOT ;
 
-"=="			return EQ ;
+"=="				return EQ ;
 
-"!="			return NE ;
+"!="				return NE ;
 
-"<="			return LE ;
+"<="				return LE ;
 
-">="			return GE ;
+">="				return GE ;
 
-"read"			return READ ;
+"read"				return READ ;
 
-"write"			return WRITE ;
+"write"				return WRITE ;
 
-"if"			return IF ;
+"if"				return IF ;
 
-"then" 			return THEN ;
+"then" 				return THEN ;
 
-"else" 			return ELSE ;
+"else" 				return ELSE ;
 
-"endif" 		return ENDIF ;
+"endif" 			return ENDIF ;
 
-"while" 		return WHILE ;
+"while" 			return WHILE ;
 
-"do"			return DO ;
+"do"				return DO ;
 
-"endwhile"		return ENDWHILE ;	
+"endwhile"			return ENDWHILE ;	
 
-"begin"			return BGN ;
+"begin"				return BGN ;
 
-"end"			return END ;
+"end"				return END ;
 
-[a-zA-Z_]+[a-zA-Z_0-9]*	{
-				yylval.name = strdup(yytext) ;
-				return ID ;
-			}
+[a-zA-Z_]+[a-zA-Z_0-9]*		{
+					yylval.name = strdup(yytext) ;
+					return ID ;
+				}
 
-[ \t\n]			;
+[ \t\n]				;
 
-.			yyerror("invalid character") ;
+.				yyerror("invalid character") ;
 
 %%
 

@@ -53,8 +53,8 @@
 
 %%
 
-pgm:
-	declaration BGN slist END				{
+pgm :
+	gl_dec fn_def main_fn					{
 									printf("AST created\n\n") ;
 			
 									codegen_main($3) ;
@@ -64,27 +64,84 @@ pgm:
 								}
 	;
 
-declaration:
-	DECL dec_list ENDDECL					
+gl_dec :
+	DECL gdec_list ENDDECL					
 	;
 
-dec_list:
-	dec_stat dec_list					
+gdec_list :
+	gdec_stat gdec_list					
 	|							
 	;
 
-dec_stat:
-	type var_list ';'					
+gdec_stat :
+	type gid_list ';'
+	;					
 
-type:
+type :
 	INTEGER 						{t_num = 1 ;}
 	| BOOLEAN						{t_num = 2 ;}
+	;
 
-var_list:
+gid_list :
+	gid_list ',' gid
+	;
+
+gid :
+	ID
+	| ID '[' NUM ']'
+	| ID '(' arg_list ')'
+
+/*
+var_list :
 	ID							{ginstall($1,t_num,1);}
 	| ID '[' NUM ']' 					{ginstall($1,t_num,$3);}
 	| var_list ',' ID					{ginstall($3,t_num,1);}
-	| var_list ',' ID '[' NUM ']'  			{ginstall($3,t_num,$5);}	
+	| var_list ',' ID '[' NUM ']'  				{ginstall($3,t_num,$5);}	
+	;
+*/
+
+arg_list :
+	arg ';' arg_list
+	|
+	;
+
+arg :
+	type id_list
+	;
+
+id_list :
+	ID
+	| ID '&'
+	| ID ',' id_list
+	| ID '&' ',' id_list
+	;
+
+fn_def :
+	type ID '(' arg_list ')' '{' ldec_list body '}'
+	;
+
+main_fn :
+	INTEGER MAIN '(' ')' '{' ldec_list body '}'
+	;
+
+ldec_list :
+	ldec_stat ldec_list
+	| 
+	;
+
+ldec_stat :
+	type var_list ';'
+	;
+	
+var_list :
+	ID							{linstall($1,t_num,1);}
+	| ID '[' NUM ']' 					{linstall($1,t_num,$3);}
+	| var_list ',' ID					{linstall($3,t_num,1);}
+	| var_list ',' ID '[' NUM ']'  				{linstall($3,t_num,$5);}	
+	;
+
+body :
+	BGN slist END
 	;
 
 slist:
@@ -93,7 +150,7 @@ slist:
 	;
 
 stmt:
-	ID '=' expr ';'					{
+	ID '=' expr ';'						{
 									node *temp = create_node(2,'a',0,$1,NULL,NULL,NULL) ;
 									$$ = create_node(3,'=',0,"none",temp,$3,NULL);
 								}
@@ -122,6 +179,7 @@ stmt:
 expr:
 	ID							{$$ = create_node(2,'a',0,$1,NULL,NULL,NULL);}
 	| ID '[' expr ']'					{$$ = create_node(22,'a',0,$1,$3,NULL,NULL);}
+	| ID '(' arg_list ')'
 	| NUM							{$$ = create_node(0,'a',$1,"none",NULL,NULL,NULL);}
 	| '-' NUM %prec UMINUS 					{$$ = create_node(0,'a',-$2,"none",NULL,NULL,NULL);}
 	| TRUE							{$$ = create_node(0,'b',1,"none",NULL,NULL,NULL);}
