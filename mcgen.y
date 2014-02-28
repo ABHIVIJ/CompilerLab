@@ -6,8 +6,11 @@
 
 	node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) ;
 
-	void ginstall(char *name,int type,int size) ;
+	void ginstall(char *name, int type, int size, arg_list_type *arguments) ;
 	gsym *glookup(char *name) ;
+
+	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 : i.e. arguments will be reverse order since insertion at beginning
+	void check_fn_def(int type, char *name, arg_list_type *arguments) ;
 	
 	void codegen_main(node *e) ;
 	int codegen(node *e) ;
@@ -17,12 +20,13 @@
 	int yylex(void) ;
 	void yyerror(char *) ;
 
-	int t_num ;		//1 for int
+	int t_num, argt_num ;	//1 for int
 				//2 for bool
 
 	int mem_index = 0 ;
 
 	gsym *gtable = NULL ;
+	arg_list_type *arguments = NULL ;
 
 	int reg_cnt, label_cnt ;
 
@@ -41,7 +45,7 @@
 
 %token <val> NUM
 %token <name> ID
-%token UMINUS READ WRITE IF THEN ELSE ENDIF WHILE DO ENDWHILE DECL ENDDECL INTEGER BOOLEAN TRUE FALSE BGN END
+%token UMINUS READ WRITE IF THEN ELSE ENDIF WHILE DO ENDWHILE DECL ENDDECL INTEGER BOOLEAN TRUE FALSE BGN END MAIN
 
 %nonassoc '>' '<' EQ GE LE NE 
 %left AND OR
@@ -78,25 +82,28 @@ gdec_stat :
 	;					
 
 type :
-	INTEGER 						{t_num = 1 ;}
-	| BOOLEAN						{t_num = 2 ;}
+	INTEGER 						{ t_num = 1 ; }
+	| BOOLEAN						{ t_num = 2 ; }
 	;
 
 gid_list :
-	gid_list ',' gid
+	gid_list ',' gid					
 	;
 
 gid :
-	ID
-	| ID '[' NUM ']'
-	| ID '(' arg_list ')'
+	ID							{ ginstall($1, t_num, 1, NULL) ; }
+	| ID '[' NUM ']'					{ ginstall($1, t_num, $3, NULL) ; }
+	| ID '(' arg_list ')'					{ 
+								  ginstall($1, t_num, 0, arguments) ; /*Since global variable-arguments is 													 passed as an argument, the 4th arg 													 can be directly assigned to g->arguments 													 for all rules with LHS gid */ 
+								  arguments = NULL ;		      
+								}
 
 /*
 var_list :
-	ID							{ginstall($1,t_num,1);}
-	| ID '[' NUM ']' 					{ginstall($1,t_num,$3);}
-	| var_list ',' ID					{ginstall($3,t_num,1);}
-	| var_list ',' ID '[' NUM ']'  				{ginstall($3,t_num,$5);}	
+	ID							{ ginstall($1,t_num,1); }
+	| ID '[' NUM ']' 					{ ginstall($1,t_num,$3); }
+	| var_list ',' ID					{ ginstall($3,t_num,1); }
+	| var_list ',' ID '[' NUM ']'  				{ ginstall($3,t_num,$5); }	
 	;
 */
 
@@ -106,18 +113,24 @@ arg_list :
 	;
 
 arg :
-	type id_list
+	arg_type id_list
 	;
 
+arg_type :
+	INTEGER 						{ argt_num = 1 ; }
+	| BOOLEAN						{ argt_num = 2 ; }
+	;
+
+
 id_list :
-	ID
-	| ID '&'
-	| ID ',' id_list
-	| ID '&' ',' id_list
+	ID							{ insert_arg(argt_num, $1, 0) ; }
+	| ID '&'						{ insert_arg(argt_num, $1, 1) ; }
+	| ID ',' id_list					{ insert_arg(argt_num, $1, 0) ; }
+	| ID '&' ',' id_list					{ insert_arg(argt_num, $1, 1) ; }
 	;
 
 fn_def :
-	type ID '(' arg_list ')' '{' ldec_list body '}'
+	type ID '(' arg_list ')' '{' ldec_list body '}'		{ check_fn_def($1, $2, arguments)  ; }
 	;
 
 main_fn :
@@ -134,10 +147,10 @@ ldec_stat :
 	;
 	
 var_list :
-	ID							{linstall($1,t_num,1);}
-	| ID '[' NUM ']' 					{linstall($1,t_num,$3);}
-	| var_list ',' ID					{linstall($3,t_num,1);}
-	| var_list ',' ID '[' NUM ']'  				{linstall($3,t_num,$5);}	
+	ID							//{ linstall($1,t_num,1); }
+	| ID '[' NUM ']' 					//{ linstall($1,t_num,$3); }
+	| var_list ',' ID					//{ linstall($3,t_num,1); }
+	| var_list ',' ID '[' NUM ']'  				//{ linstall($3,t_num,$5); }	
 	;
 
 body :
@@ -145,8 +158,8 @@ body :
 	;
 
 slist:
-	slist stmt						{$$ = create_node(4,'a',0,"none",$1,$2,NULL);}
-	| stmt							{$$ = $1;}
+	slist stmt						{ $$ = create_node(4,'a',0,"none",$1,$2,NULL) ; }
+	| stmt							{ $$ = $1 ; }
 	;
 
 stmt:
@@ -170,48 +183,44 @@ stmt:
 									$$ = create_node(3,'r',0,"none",temp,NULL,NULL);
 								}
 
-	| WRITE '(' expr ')' ';'				{$$ = create_node(3,'p',0,"none",$3,NULL,NULL);}
-	| IF '(' expr ')' THEN slist ENDIF ';'			{$$ = create_node(3,'i',0,"none",$3,$6,NULL);} 
-	| IF '(' expr ')' THEN slist  ELSE slist ENDIF ';'	{$$ = create_node(3,'e',0,"none",$3,$6,$8);}
-	| WHILE '(' expr ')' DO slist ENDWHILE ';'		{$$ = create_node(3,'w',0,"none",$3,$6,NULL);}
+	| WRITE '(' expr ')' ';'				{ $$ = create_node(3,'p',0,"none",$3,NULL,NULL); }
+	| IF '(' expr ')' THEN slist ENDIF ';'			{ $$ = create_node(3,'i',0,"none",$3,$6,NULL); } 
+	| IF '(' expr ')' THEN slist  ELSE slist ENDIF ';'	{ $$ = create_node(3,'e',0,"none",$3,$6,$8); }
+	| WHILE '(' expr ')' DO slist ENDWHILE ';'		{ $$ = create_node(3,'w',0,"none",$3,$6,NULL); }
 	;
 
 expr:
-	ID							{$$ = create_node(2,'a',0,$1,NULL,NULL,NULL);}
-	| ID '[' expr ']'					{$$ = create_node(22,'a',0,$1,$3,NULL,NULL);}
-	| ID '(' arg_list ')'
-	| NUM							{$$ = create_node(0,'a',$1,"none",NULL,NULL,NULL);}
-	| '-' NUM %prec UMINUS 					{$$ = create_node(0,'a',-$2,"none",NULL,NULL,NULL);}
-	| TRUE							{$$ = create_node(0,'b',1,"none",NULL,NULL,NULL);}
-	| FALSE							{$$ = create_node(0,'b',0,"none",NULL,NULL,NULL);}
-	| expr '+' expr						{$$ = create_node(1,'+',0,"none",$1,$3,NULL);}
-	| expr '-' expr						{$$ = create_node(1,'-',0,"none",$1,$3,NULL);}
-	| expr '*' expr						{$$ = create_node(1,'*',0,"none",$1,$3,NULL);}
-	| expr '/' expr						{$$ = create_node(1,'/',0,"none",$1,$3,NULL);}
-	| expr '%' expr						{$$ = create_node(1,'%',0,"none",$1,$3,NULL);}
-	| '(' expr ')'						{$$ = $2;}
-	| expr '>' expr 					{$$ = create_node(1,'>',0,"none",$1,$3,NULL);}
-	| expr '<' expr						{$$ = create_node(1,'<',0,"none",$1,$3,NULL);}
-	| expr LE expr						{$$ = create_node(1,'L',0,"none",$1,$3,NULL);}
-	| expr GE expr						{$$ = create_node(1,'G',0,"none",$1,$3,NULL);}
- 	| expr EQ expr						{$$ = create_node(1,'E',0,"none",$1,$3,NULL);}
- 	| expr NE expr						{$$ = create_node(1,'N',0,"none",$1,$3,NULL);}
-	| expr AND expr						{$$ = create_node(1,'A',0,"none",$1,$3,NULL);}
-	| expr OR expr						{$$ = create_node(1,'O',0,"none",$1,$3,NULL);}
-	| NOT expr 						{$$ = create_node(1,'!',0,"none",$2,NULL,NULL);}
+	ID							{ $$ = create_node(2,'a',0,$1,NULL,NULL,NULL); }
+	| ID '[' expr ']'					{ $$ = create_node(22,'a',0,$1,$3,NULL,NULL); }
+	| ID '(' id_list ')'
+	| NUM							{ $$ = create_node(0,'a',$1,"none",NULL,NULL,NULL); }
+	| '-' NUM %prec UMINUS 					{ $$ = create_node(0,'a',-$2,"none",NULL,NULL,NULL); }
+	| TRUE							{ $$ = create_node(0,'b',1,"none",NULL,NULL,NULL); }
+	| FALSE							{ $$ = create_node(0,'b',0,"none",NULL,NULL,NULL); }
+	| expr '+' expr						{ $$ = create_node(1,'+',0,"none",$1,$3,NULL); }
+	| expr '-' expr						{ $$ = create_node(1,'-',0,"none",$1,$3,NULL); }
+	| expr '*' expr						{ $$ = create_node(1,'*',0,"none",$1,$3,NULL); }
+	| expr '/' expr						{ $$ = create_node(1,'/',0,"none",$1,$3,NULL); }
+	| expr '%' expr						{ $$ = create_node(1,'%',0,"none",$1,$3,NULL); }
+	| '(' expr ')'						{ $$ = $2; }
+	| expr '>' expr 					{ $$ = create_node(1,'>',0,"none",$1,$3,NULL); }
+	| expr '<' expr						{ $$ = create_node(1,'<',0,"none",$1,$3,NULL); }
+	| expr LE expr						{ $$ = create_node(1,'L',0,"none",$1,$3,NULL); }
+	| expr GE expr						{ $$ = create_node(1,'G',0,"none",$1,$3,NULL); }
+ 	| expr EQ expr						{ $$ = create_node(1,'E',0,"none",$1,$3,NULL); }
+ 	| expr NE expr						{ $$ = create_node(1,'N',0,"none",$1,$3,NULL); }
+	| expr AND expr						{ $$ = create_node(1,'A',0,"none",$1,$3,NULL); }
+	| expr OR expr						{ $$ = create_node(1,'O',0,"none",$1,$3,NULL); }
+	| NOT expr 						{ $$ = create_node(1,'!',0,"none",$2,NULL,NULL); }
 	;
 
 %%
-void ginstall(char *name,int type,int size) 
+void ginstall(char *name, int type, int size, arg_list_type *arguments) 
 {
 	gsym *g, *prev ;
 	prev = glookup(name) ;
 	if(prev != NULL)
-	{
-		prev->type = type ;
-		prev->size = size ;
-		printf("Variable redeclared\n") ;
-	}
+		yyerror("Variable/function declared more than once") ;
 	else
 	{	
 		g = (gsym *)malloc(sizeof(gsym)) ;
@@ -224,6 +233,8 @@ void ginstall(char *name,int type,int size)
 		g->binding = mem_index ;
 
 		mem_index += size ;
+
+		g->arguments = strdup(arguments) ;
 
 		g->next = gtable ;				//inserts a new variable entry at the beginning of the symbol table
 		gtable = g ;
@@ -238,6 +249,49 @@ gsym *glookup(char *name)
 	while((g != NULL)&&(strcmp(g->name,name) != 0))
 		g = g->next ; 
 	return g ;
+}
+
+void insert_arg(int type, char *name, int ref)
+{
+	arg_list_type *a ;
+	a = (arg_list_type *)malloc(sizeof(arg_list_type)) ;
+	if(a == NULL)
+		yyerror("No memory space !") ;
+	a->type = type ;
+	a->name = strdup(name) ;
+	a->ref = ref ;
+	
+	a->next_arg = arguments ;
+	arguments = a ;
+
+	return ;
+}
+
+void check_fn_def(int type, char *name, arg_list_type *arguments)
+{
+	gsym *g ;
+	arg_list_type *a1, *a2 ;
+	g = glookup(name) ;
+	if(g == NULL)
+		yyerror("Function declaration missing ! ") ;
+	if(g->type != type)
+		yyerror("Function declaration and definition have conflicting return types ! ") ;
+	
+	a1 = arguments ;
+	a2 = g->arguments ;
+
+	while((a1 != NULL) && (a2 != NULL))
+	{
+		if((a1->type != a2->type) || (strcmp(a1->name,a2->name) != 0) || (a1->ref != a2->ref))
+			yyerror("Function declaration and definition have conflicting arguments ! ") ; 
+		a1 = a1->next_arg ;
+		a2 = a2->next_arg ;
+	}
+
+	if( ((a1 == NULL) && (a2 != NULL)) || ((a1 != NULL) && (a2 == NULL)) )
+		yyerror("Function declaration and definition have differ in number of arguments ! ") ;
+
+	return ;
 }
 
 node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) 

@@ -62,6 +62,8 @@
 
 "end"				return END ;
 
+"main"				return MAIN ;
+
 [a-zA-Z_]+[a-zA-Z_0-9]*		{
 					yylval.name = strdup(yytext) ;
 					return ID ;

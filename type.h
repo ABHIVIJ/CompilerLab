@@ -1,3 +1,13 @@
+typedef struct arg_list_type
+{
+	int type ;	//1 for int type
+			//2 for bool type
+	char *name ;
+	int ref ;	//1 if call by reference
+			//0 else
+	struct arg_list_type *next_arg ;
+}arg_list_type ;
+
 typedef struct gsymbol
 {
 	char *name ;
@@ -5,6 +15,7 @@ typedef struct gsymbol
 			//2 for bool type
 	int size ;
 	int binding ;
+	arg_list_type *arguments ;
 	struct gsymbol *next ;
 }gsym ;
 
