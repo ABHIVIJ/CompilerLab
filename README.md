@@ -1,1 +1,3 @@
-Seems good to store progress ofcompiler lab stage 9 onwards in GitHub.
+Compiler Lab - A compiler for SIL 
+
+Stage 9 in progress
