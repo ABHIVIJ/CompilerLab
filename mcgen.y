@@ -6,12 +6,16 @@
 
 	node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) ;
 
-	void ginstall(char *name, int type, int size, arg_list_type *arguments) ;
+	void ginstall(char *name, int type, int size, int func_flag, arg_list_type *arguments) ;
 	gsym *glookup(char *name) ;
+
+	void linstall(char *name, int type) ;
+	lsym *llookup(char *name) ;
 
 	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 : i.e. arguments will be reverse order since insertion at beginning
 	void check_fn_def(int type, char *name, arg_list_type *arguments) ;
-	
+	void check_fn_call(char *name, node *n) ;	
+
 	void codegen_main(node *e) ;
 	int codegen(node *e) ;
 	void next_reg() ;
@@ -24,9 +28,11 @@
 				//2 for bool
 
 	int mem_index = 0 ;
+	int offset = 0 ;
 
 	gsym *gtable = NULL ;
 	arg_list_type *arguments = NULL ;
+	lsym *ltable = NULL ;
 
 	int reg_cnt, label_cnt ;
 
@@ -53,7 +59,7 @@
 %left '*' '/' '%'
 %nonassoc UMINUS NOT 
 
-%type <nptr> expr stmt slist
+%type <nptr> expr stmt slist act_par act_id_list
 
 %%
 
@@ -124,17 +130,24 @@ arg_type :
 
 id_list :
 	ID							{ insert_arg(argt_num, $1, 0) ; }
-	| ID '&'						{ insert_arg(argt_num, $1, 1) ; }
+	| '&' ID 						{ insert_arg(argt_num, $1, 1) ; }
 	| ID ',' id_list					{ insert_arg(argt_num, $1, 0) ; }
-	| ID '&' ',' id_list					{ insert_arg(argt_num, $1, 1) ; }
+	| '&' ID ',' id_list					{ insert_arg(argt_num, $1, 1) ; }
 	;
 
 fn_def :
-	type ID '(' arg_list ')' '{' ldec_list body '}'		{ check_fn_def($1, $2, arguments)  ; }
+	type ID '(' arg_list ')' '{' ldec_list body '}'		{ 
+								  check_fn_def($1, $2, arguments)  ;
+								  free(ltable) ;
+								  ltable = NULL ;					 
+								}
 	;
 
 main_fn :
-	INTEGER MAIN '(' ')' '{' ldec_list body '}'
+	INTEGER MAIN '(' ')' '{' ldec_list body '}'		{ 
+								  free(ltable) ; 
+								  ltable = NULL ;					 
+								}
 	;
 
 ldec_list :
@@ -147,14 +160,12 @@ ldec_stat :
 	;
 	
 var_list :
-	ID							//{ linstall($1,t_num,1); }
-	| ID '[' NUM ']' 					//{ linstall($1,t_num,$3); }
-	| var_list ',' ID					//{ linstall($3,t_num,1); }
-	| var_list ',' ID '[' NUM ']'  				//{ linstall($3,t_num,$5); }	
+	ID							{ linstall($1,t_num); }
+	| var_list ',' ID					{ linstall($3,t_num); }
 	;
 
 body :
-	BGN slist END
+	BGN slist END						{ $$ = $3 ; }
 	;
 
 slist:
@@ -189,10 +200,22 @@ stmt:
 	| WHILE '(' expr ')' DO slist ENDWHILE ';'		{ $$ = create_node(3,'w',0,"none",$3,$6,NULL); }
 	;
 
+
+act_par :											//actual parameters-for function call
+	 '&' ID							{ $$ = create_node(-2,'a',0,$2,NULL,NULL,NULL); }			
+	| expr							{ $$ = $1 ; }
+	| '&' ID ',' act_par					{ $$ = create_node(-2,'a',0,$2,NULL,NULL,$4) ; }
+	| expr ',' act_par					{
+								  $1->st3 = $3 ;
+								  $$ = $1 ;	 
+								}
+	;
+
+
 expr:
 	ID							{ $$ = create_node(2,'a',0,$1,NULL,NULL,NULL); }
 	| ID '[' expr ']'					{ $$ = create_node(22,'a',0,$1,$3,NULL,NULL); }
-	| ID '(' id_list ')'
+	| ID '(' act_par ')'					{ check_fn_call($1,$3); }
 	| NUM							{ $$ = create_node(0,'a',$1,"none",NULL,NULL,NULL); }
 	| '-' NUM %prec UMINUS 					{ $$ = create_node(0,'a',-$2,"none",NULL,NULL,NULL); }
 	| TRUE							{ $$ = create_node(0,'b',1,"none",NULL,NULL,NULL); }
@@ -215,7 +238,7 @@ expr:
 	;
 
 %%
-void ginstall(char *name, int type, int size, arg_list_type *arguments) 
+void ginstall(char *name, int type, int size, int func_flag, arg_list_type *arguments) 
 {
 	gsym *g, *prev ;
 	prev = glookup(name) ;
@@ -231,6 +254,7 @@ void ginstall(char *name, int type, int size, arg_list_type *arguments)
 		g->size = size ;
 
 		g->binding = mem_index ;
+		g->func_flag = func_flag ;
 
 		mem_index += size ;
 
@@ -249,6 +273,35 @@ gsym *glookup(char *name)
 	while((g != NULL)&&(strcmp(g->name,name) != 0))
 		g = g->next ; 
 	return g ;
+}
+
+void linstall(char *name, int type)
+{
+	lsym *l, *prev ;
+	prev = llookup(name) ;
+	if(prev != NULL)
+		yyerror("Variable declared more than once") ;
+	else
+	{
+		l = (lsym *)malloc(sizeof(lsym)) ;
+		if(l == NULL)
+			yyerror("No memory space !") ;
+		l->name = strdup(name) ;
+		l->type = type ;
+
+		l->next = ltable ;
+		ltable = l ;
+	}
+	return ;
+}
+
+void llookup(char *name)
+{
+	lsym *l ;
+	l = ltable ;
+	while((l != NULL)&&(strcmp(l->name,name) != 0))
+		l = l->next ; 
+	return l ;
 }
 
 void insert_arg(int type, char *name, int ref)
@@ -272,7 +325,7 @@ void check_fn_def(int type, char *name, arg_list_type *arguments)
 	gsym *g ;
 	arg_list_type *a1, *a2 ;
 	g = glookup(name) ;
-	if(g == NULL)
+	if(g == NULL || g->func_flag == 0)
 		yyerror("Function declaration missing ! ") ;
 	if(g->type != type)
 		yyerror("Function declaration and definition have conflicting return types ! ") ;
@@ -294,7 +347,31 @@ void check_fn_def(int type, char *name, arg_list_type *arguments)
 	return ;
 }
 
-node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) 
+void check_fn_call(char *name, node *n)
+{
+	gsym *g ;
+	arg_list_type a1 ;
+
+	g = glookup(name) ;
+	if(g == NULL || g->func_flag == 0)
+		yyerror("Function declaration and definition missing ! ") ;
+
+	a1 = g->arguments ;
+
+	while((a1 != NULL) && (n != NULL))
+	{
+		if(a1->type != n->type) //n->type is not defined !!!!! TO BE CORRECTED.....
+			yyerror("Arguments not of correct type ! ") ;
+		a1 = a1->next_arg ;
+		n = n->st3 ;
+	}
+
+	if( ((a1 == NULL) && (a2 != NULL)) || ((a1 != NULL) && (a2 == NULL)) )
+		yyerror("Invalid number of arguments ! ") ;
+	 
+	return ;
+}
+node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) //sp passes both spec and type in node_des
 {
 	node *p ;
 	gsym *g ;
@@ -466,16 +543,16 @@ int codegen(node *e)
 						case '>'	:	fprintf(fp,"GT R%d, R%d\n",a,b) ;
 									break ;
 
-						case 'L'	: 	fprintf(fp,"'L' R%d, R%d\n",a,b) ;
+						case 'L'	: 	fprintf(fp,"LE R%d, R%d\n",a,b) ;
 									break ;
 
-						case 'G'	: 	fprintf(fp,"'G' R%d, R%d\n",a,b) ;
+						case 'G'	: 	fprintf(fp,"GE R%d, R%d\n",a,b) ;
 									break ;
 
-						case 'E'	: 	fprintf(fp,"'E' R%d, R%d\n",a,b) ;
+						case 'E'	: 	fprintf(fp,"EQ R%d, R%d\n",a,b) ;
 									break ;
 
-						case 'N'	: 	fprintf(fp,"'N' R%d, R%d\n",a,b) ;
+						case 'N'	: 	fprintf(fp,"NE R%d, R%d\n",a,b) ;
 									break ;
 
 						case 'A' 	:	fprintf(fp,"JZ R%d, L%d\n",a,label_cnt++) ;
