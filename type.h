@@ -48,13 +48,12 @@ typedef struct node_des
 		char *name ;	//for id
 		int spec ; 	//for operator and statements : the corresponding tokens (as a character or the value assigned by lex to the 					//								token will be passed) 
 	};
-	struct node_des *st1, *st2, *st3 ;
+	struct node_des *st1, *st2, *st3 ; //for actual parameters st3 points to next argument
 
 	gsym *gentry ;	//NULL for elements except id
 
 	lsym *lentry ; //NULL for all elements except local id
 
-	arglist_type *arglist ;
 }node ;	
 
 

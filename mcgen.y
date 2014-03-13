@@ -6,7 +6,7 @@
 
 	node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) ;
 
-	void ginstall(char *name, int type, int size, int func_flag, arg_list_type *arguments) ;
+	void ginstall(char *name, int type, int size, int func_flag) ;
 	gsym *glookup(char *name) ;
 
 	void linstall(char *name, int type) ;
@@ -15,6 +15,7 @@
 	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 : i.e. arguments will be reverse order since insertion at beginning
 	void check_fn_def(int type, char *name, arg_list_type *arguments) ;
 	void check_fn_call(char *name, node *n) ;	
+	node *link_arg(node *n1, node *n2) ;
 
 	void codegen_main(node *e) ;
 	int codegen(node *e) ;
@@ -59,7 +60,7 @@
 %left '*' '/' '%'
 %nonassoc UMINUS NOT 
 
-%type <nptr> expr stmt slist act_par act_id_list
+%type <nptr> expr stmt slist act_par body fn_def main_fn
 
 %%
 
@@ -97,22 +98,11 @@ gid_list :
 	;
 
 gid :
-	ID							{ ginstall($1, t_num, 1, NULL) ; }
-	| ID '[' NUM ']'					{ ginstall($1, t_num, $3, NULL) ; }
-	| ID '(' arg_list ')'					{ 
-								  ginstall($1, t_num, 0, arguments) ; /*Since global variable-arguments is 													 passed as an argument, the 4th arg 													 can be directly assigned to g->arguments 													 for all rules with LHS gid */ 
-								  arguments = NULL ;		      
-								}
-
-/*
-var_list :
-	ID							{ ginstall($1,t_num,1); }
-	| ID '[' NUM ']' 					{ ginstall($1,t_num,$3); }
-	| var_list ',' ID					{ ginstall($3,t_num,1); }
-	| var_list ',' ID '[' NUM ']'  				{ ginstall($3,t_num,$5); }	
-	;
-*/
-
+	ID							{ ginstall($1, t_num, 1) ; }
+	| ID '[' NUM ']'					{ ginstall($1, t_num, $3) ; }
+	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0) ; }		//ginstall sets global variable
+ 													//arguments to NULL
+	
 arg_list :
 	arg ';' arg_list
 	|
@@ -127,17 +117,16 @@ arg_type :
 	| BOOLEAN						{ argt_num = 2 ; }
 	;
 
-
 id_list :
 	ID							{ insert_arg(argt_num, $1, 0) ; }
-	| '&' ID 						{ insert_arg(argt_num, $1, 1) ; }
+	| '&' ID 						{ insert_arg(argt_num, $2, 1) ; }
 	| ID ',' id_list					{ insert_arg(argt_num, $1, 0) ; }
-	| '&' ID ',' id_list					{ insert_arg(argt_num, $1, 1) ; }
+	| '&' ID ',' id_list					{ insert_arg(argt_num, $2, 1) ; }
 	;
 
 fn_def :
 	type ID '(' arg_list ')' '{' ldec_list body '}'		{ 
-								  check_fn_def($1, $2, arguments)  ;
+								  check_fn_def(t_num, $2, arguments)  ;
 								  free(ltable) ;
 								  ltable = NULL ;					 
 								}
@@ -165,7 +154,7 @@ var_list :
 	;
 
 body :
-	BGN slist END						{ $$ = $3 ; }
+	BGN slist END						{ $$ = $2 ; }
 	;
 
 slist:
@@ -205,10 +194,7 @@ act_par :											//actual parameters-for function call
 	 '&' ID							{ $$ = create_node(-2,'a',0,$2,NULL,NULL,NULL); }			
 	| expr							{ $$ = $1 ; }
 	| '&' ID ',' act_par					{ $$ = create_node(-2,'a',0,$2,NULL,NULL,$4) ; }
-	| expr ',' act_par					{
-								  $1->st3 = $3 ;
-								  $$ = $1 ;	 
-								}
+	| expr ',' act_par					{ $$ = link_arg($1,$3) ; }
 	;
 
 
@@ -238,7 +224,7 @@ expr:
 	;
 
 %%
-void ginstall(char *name, int type, int size, int func_flag, arg_list_type *arguments) 
+void ginstall(char *name, int type, int size, int func_flag) 
 {
 	gsym *g, *prev ;
 	prev = glookup(name) ;
@@ -258,7 +244,8 @@ void ginstall(char *name, int type, int size, int func_flag, arg_list_type *argu
 
 		mem_index += size ;
 
-		g->arguments = strdup(arguments) ;
+		g->arguments = arguments ;
+		arguments = NULL ;
 
 		g->next = gtable ;				//inserts a new variable entry at the beginning of the symbol table
 		gtable = g ;
@@ -295,7 +282,7 @@ void linstall(char *name, int type)
 	return ;
 }
 
-void llookup(char *name)
+lsym *llookup(char *name)
 {
 	lsym *l ;
 	l = ltable ;
@@ -326,9 +313,9 @@ void check_fn_def(int type, char *name, arg_list_type *arguments)
 	arg_list_type *a1, *a2 ;
 	g = glookup(name) ;
 	if(g == NULL || g->func_flag == 0)
-		yyerror("Function declaration missing ! ") ;
+		yyerror("Function declaration missing !") ;
 	if(g->type != type)
-		yyerror("Function declaration and definition have conflicting return types ! ") ;
+		yyerror("Function declaration and definition have conflicting return types !") ;
 	
 	a1 = arguments ;
 	a2 = g->arguments ;
@@ -336,13 +323,13 @@ void check_fn_def(int type, char *name, arg_list_type *arguments)
 	while((a1 != NULL) && (a2 != NULL))
 	{
 		if((a1->type != a2->type) || (strcmp(a1->name,a2->name) != 0) || (a1->ref != a2->ref))
-			yyerror("Function declaration and definition have conflicting arguments ! ") ; 
+			yyerror("Function declaration and definition have conflicting arguments !") ; 
 		a1 = a1->next_arg ;
 		a2 = a2->next_arg ;
 	}
 
 	if( ((a1 == NULL) && (a2 != NULL)) || ((a1 != NULL) && (a2 == NULL)) )
-		yyerror("Function declaration and definition have differ in number of arguments ! ") ;
+		yyerror("Function declaration and definition have differ in number of arguments !") ;
 
 	return ;
 }
@@ -350,31 +337,41 @@ void check_fn_def(int type, char *name, arg_list_type *arguments)
 void check_fn_call(char *name, node *n)
 {
 	gsym *g ;
-	arg_list_type a1 ;
+	arg_list_type *a ;
 
 	g = glookup(name) ;
 	if(g == NULL || g->func_flag == 0)
-		yyerror("Function declaration and definition missing ! ") ;
+		yyerror("Function declaration and definition missing !") ;
 
-	a1 = g->arguments ;
+	a = g->arguments ;
 
-	while((a1 != NULL) && (n != NULL))
+	while((a != NULL) && (n != NULL))
 	{
-		if(a1->type != n->type) //n->type is not defined !!!!! TO BE CORRECTED.....
-			yyerror("Arguments not of correct type ! ") ;
-		a1 = a1->next_arg ;
+		if(a->type != n->type)
+			yyerror("Arguments not of correct type !") ;
+		if( (a->type == n->type) && ((a->ref == 1) && (n->node_type != -2)) )
+			yyerror("Call by reference expected") ;
+		a = a->next_arg ;
 		n = n->st3 ;
 	}
 
-	if( ((a1 == NULL) && (a2 != NULL)) || ((a1 != NULL) && (a2 == NULL)) )
-		yyerror("Invalid number of arguments ! ") ;
+	if( ((a == NULL) && (n != NULL)) || ((a != NULL) && (n == NULL)) )
+		yyerror("Invalid number of arguments !") ;
 	 
 	return ;
 }
+
+node *link_arg(node *n1, node *n2)
+{
+	n1->st3 = n2 ;
+	return n1 ;
+}
+
 node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) //sp passes both spec and type in node_des
 {
 	node *p ;
 	gsym *g ;
+	lsym *l ;
 	p = (node *)malloc(sizeof(node)) ;
 	if(p == NULL)
 		yyerror("No memory space !") ;
@@ -419,7 +416,7 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 							case 'N' :	if((e1->type == 1)&&(e2->type == 1))
 										p->type = 2 ;
 									else
-										yyerror("Type mismatch NOT EQUAL\n") ;
+										yyerror("Type mismatch\n") ;
 									break ;
 
 							case 'A' :	
@@ -433,16 +430,39 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 							case '!' :	if(e1->type == 2)
 										p->type = 2 ;
 									else
-										yyerror("Type mismatch NOT\n") ;
+										yyerror("Type mismatch\n") ;
 									break ;
 
 						}		
 						p->gentry = NULL ;		
 						break ;
 
-		case 2		: 		
+		case 2		: 		l = llookup(name) ;
+						if(l == NULL)
+						{
+							g = glookup(name) ;
+							if(g == NULL)
+								yyerror("Variable not declared\n") ;
+							else
+							{
+								p->gentry = g ;
+								p->lentry = NULL ;
+								p->name = strdup(name) ;
+								p->type = g->type ;
+							}
+						}
+						else
+						{
+							p->lentry = l ;
+							p->gentry = NULL ;
+							p->name = strdup(name) ;
+							p->type = l->type ;
+						}						
+						break ;
 
-		case 22		:		g = glookup(name) ;
+		case 22		:		if(e1->type != 1)
+							yyerror("Type mismatch\n") ;
+						g = glookup(name) ;
 						if(g == NULL)
 							yyerror("Variable not declared\n") ;
 						p->gentry = g ;
@@ -453,12 +473,12 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 		case 3		:		p->spec = sp ;
 						switch(sp)
 						{
-							case 'r' :	if(e1->type == 2)
+							case 'r' :	if(e1->type != 1)
 										yyerror("Type mismatch\n") ;
 									p->type = 0 ;
 									break ;
 
-							case 'p' :	if(e1->type == 2)
+							case 'p' :	if(e1->type != 1)
 										yyerror("Type mismatch\n") ;
 									p->type = 0 ;
 									break ;
@@ -515,7 +535,6 @@ int codegen(node *e)
 		case 0		:	fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->val) ;	
 					next_reg() ;
 					return reg_cnt-1 ;	
-
 
 		case 1		:	a = codegen(e->st1) ;
 					if(e->spec != '!')
