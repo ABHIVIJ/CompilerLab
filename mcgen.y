@@ -53,7 +53,6 @@
 %token <val> NUM
 %token <name> ID
 %token UMINUS READ WRITE IF THEN ELSE ENDIF WHILE DO ENDWHILE DECL ENDDECL INTEGER BOOLEAN TRUE FALSE BGN END MAIN
-
 %nonassoc '>' '<' EQ GE LE NE 
 %left AND OR
 %left '+' '-'
@@ -101,8 +100,22 @@ gid :
 	ID							{ ginstall($1, t_num, 1) ; }
 	| ID '[' NUM ']'					{ ginstall($1, t_num, $3) ; }
 	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0) ; }		//ginstall sets global variable
- 													//arguments to NULL
-	
+ 													//'arguments' to NULL
+fn_def :
+	type ID '(' arg_list ')' '{' ldec_list body '}'		{ 
+								  check_fn_def(t_num, $2, arguments)  ;
+								  free(ltable) ;
+								  ltable = NULL ;					 
+								}
+	;
+
+main_fn :
+	INTEGER MAIN '(' ')' '{' ldec_list body '}'		{ 
+								  free(ltable) ; 
+								  ltable = NULL ;					 
+								}
+	;
+
 arg_list :
 	arg ';' arg_list
 	|
@@ -122,21 +135,6 @@ id_list :
 	| '&' ID 						{ insert_arg(argt_num, $2, 1) ; }
 	| ID ',' id_list					{ insert_arg(argt_num, $1, 0) ; }
 	| '&' ID ',' id_list					{ insert_arg(argt_num, $2, 1) ; }
-	;
-
-fn_def :
-	type ID '(' arg_list ')' '{' ldec_list body '}'		{ 
-								  check_fn_def(t_num, $2, arguments)  ;
-								  free(ltable) ;
-								  ltable = NULL ;					 
-								}
-	;
-
-main_fn :
-	INTEGER MAIN '(' ')' '{' ldec_list body '}'		{ 
-								  free(ltable) ; 
-								  ltable = NULL ;					 
-								}
 	;
 
 ldec_list :
@@ -199,10 +197,10 @@ act_par :											//actual parameters-for function call
 
 
 expr:
-	ID							{ $$ = create_node(2,'a',0,$1,NULL,NULL,NULL); }
+	ID	  						{ $$ = create_node(2,'a',0,$1,NULL,NULL,NULL); }
 	| ID '[' expr ']'					{ $$ = create_node(22,'a',0,$1,$3,NULL,NULL); }
 	| ID '(' act_par ')'					{ check_fn_call($1,$3); }
-	| NUM							{ $$ = create_node(0,'a',$1,"none",NULL,NULL,NULL); }
+	| NUM	  						{ $$ = create_node(0,'a',$1,"none",NULL,NULL,NULL); }
 	| '-' NUM %prec UMINUS 					{ $$ = create_node(0,'a',-$2,"none",NULL,NULL,NULL); }
 	| TRUE							{ $$ = create_node(0,'b',1,"none",NULL,NULL,NULL); }
 	| FALSE							{ $$ = create_node(0,'b',0,"none",NULL,NULL,NULL); }
