@@ -100,7 +100,9 @@ gid :
 	ID							{ ginstall($1, t_num, 1) ; }
 	| ID '[' NUM ']'					{ ginstall($1, t_num, $3) ; }
 	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0) ; }		//ginstall sets global variable
- 													//'arguments' to NULL
+ 	;												//'arguments' to NULL
+
+
 fn_def :
 	type ID '(' arg_list ')' '{' ldec_list body '}'		{ 
 								  check_fn_def(t_num, $2, arguments)  ;
