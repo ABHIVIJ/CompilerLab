@@ -64,11 +64,11 @@
 %%
 
 pgm :
-	gl_dec fn_def main_fn					{
+	gl_dec fn_def_list main_fn				{
 									printf("AST created\n\n") ;
 			
-									codegen_main($3) ;
-									printf("Code generation complete\n") ;
+									//codegen_main($3) ;
+									//printf("Code generation complete\n") ;
 
 									exit(0) ;
 								}
@@ -80,7 +80,7 @@ gl_dec :
 
 gdec_list :
 	gdec_stat gdec_list					
-	|							
+	|													
 	;
 
 gdec_stat :
@@ -104,17 +104,24 @@ gid :
  	;												//'arguments' to NULL
 
 
+fn_def_list :
+	fn_def_list fn_def
+	|
+	;
+
 fn_def :
 	type ID '(' arg_list ')' '{' l_dec body '}'		{ 
 								  check_fn_def(t_num, $2, arguments)  ;
-								  free(ltable) ;
+								  if(ltable != NULL)	
+								  	free(ltable) ;
 								  ltable = NULL ;					 
 								}
 	;
 
 main_fn :
 	INTEGER MAIN '(' ')' '{' l_dec body '}'			{ 
-								  free(ltable) ; 
+							          if(ltable != NULL)				
+								  	free(ltable) ; 
 								  ltable = NULL ;					 
 								}
 	;
