@@ -93,7 +93,8 @@ type :
 	;
 
 gid_list :
-	gid_list ',' gid					
+	gid_list ',' gid
+	| gid					
 	;
 
 gid :
