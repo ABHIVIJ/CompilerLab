@@ -12,7 +12,7 @@
 	void linstall(char *name, int type) ;
 	lsym *llookup(char *name) ;
 
-	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 : i.e. arguments will be reverse order since insertion at beginning
+	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 :i.e. arguments will be reverse order since insertion at beginning
 	void check_fn_def(int type, char *name, arg_list_type *arguments) ;
 	void check_fn_call(char *name, node *n) ;	
 	node *link_arg(node *n1, node *n2) ;
@@ -104,7 +104,7 @@ gid :
 
 
 fn_def :
-	type ID '(' arg_list ')' '{' ldec_list body '}'		{ 
+	type ID '(' arg_list ')' '{' l_dec body '}'		{ 
 								  check_fn_def(t_num, $2, arguments)  ;
 								  free(ltable) ;
 								  ltable = NULL ;					 
@@ -112,7 +112,7 @@ fn_def :
 	;
 
 main_fn :
-	INTEGER MAIN '(' ')' '{' ldec_list body '}'		{ 
+	INTEGER MAIN '(' ')' '{' l_dec body '}'			{ 
 								  free(ltable) ; 
 								  ltable = NULL ;					 
 								}
@@ -137,6 +137,10 @@ id_list :
 	| '&' ID 						{ insert_arg(argt_num, $2, 1) ; }
 	| ID ',' id_list					{ insert_arg(argt_num, $1, 0) ; }
 	| '&' ID ',' id_list					{ insert_arg(argt_num, $2, 1) ; }
+	;
+
+l_dec :
+	DECL ldec_list ENDDECL
 	;
 
 ldec_list :
