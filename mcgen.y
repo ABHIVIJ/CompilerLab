@@ -98,9 +98,9 @@ gid_list :
 	;
 
 gid :
-	ID							{ ginstall($1, t_num, 1) ; }
-	| ID '[' NUM ']'					{ ginstall($1, t_num, $3) ; }
-	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0) ; }		//ginstall sets global variable
+	ID							{ ginstall($1, t_num, 1, 0) ; }
+	| ID '[' NUM ']'					{ ginstall($1, t_num, $3, 0) ; }
+	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0, 0) ; }		//ginstall sets global variable
  	;												//'arguments' to NULL
 
 
