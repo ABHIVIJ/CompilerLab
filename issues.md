@@ -13,4 +13,29 @@ mcgen.y:101.11-93: warning: rule useless in grammar: gid: ID '[' NUM ']'
 mcgen.y:102.11-92: warning: rule useless in grammar: gid: ID '(' arg_list ')'
 
 -----------------------------------------------------------------------------------------------------------------------------------------
+Resolved -
+	Cause :  Rule 	gid_list: gid_list ',' gid 	has no base case
 
+*****************************************************************************************************************************************
+
+issue2
+
+add_to_ltable(arg_list_type *arguments)    
+	-does not store ref value in ltable
+	-not sure if this is required
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+Resolved - 
+	Cause : ref value is stored properly. no case was given for -2 in create_node function
+
+*****************************************************************************************************************************************
+
+issue3
+
+In func call args are in correct order, but in defn and decl they are in reverse.
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+Resolved -
+	By : passing arguments in correct order to link_arg
+
+*****************************************************************************************************************************************

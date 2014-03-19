@@ -17,6 +17,8 @@
 	void check_fn_call(char *name, node *n) ;	
 	node *link_arg(node *n1, node *n2) ;
 
+	void add_to_ltable(arg_list_type *arguments) ; //! does not store ref value in ltable !
+
 	void codegen_main(node *e) ;
 	int codegen(node *e) ;
 	void next_reg() ;
@@ -25,17 +27,16 @@
 	int yylex(void) ;
 	void yyerror(char *) ;
 
-	int t_num, argt_num ;	//1 for int
+	int t_num, lt_num ;	//1 for int
 				//2 for bool
 
 	int mem_index = 0 ;
-	int offset = 0 ;
 
 	gsym *gtable = NULL ;
 	arg_list_type *arguments = NULL ;
 	lsym *ltable = NULL ;
 
-	int reg_cnt, label_cnt ;
+	int reg_cnt = 0, label_cnt = 0 ;
 
 	FILE *fp ;
 
@@ -59,15 +60,14 @@
 %left '*' '/' '%'
 %nonassoc UMINUS NOT 
 
-%type <nptr> expr stmt slist act_par body fn_def main_fn
+%type <nptr> expr stmt slist act_par body 
 
 %%
 
 pgm :
 	gl_dec fn_def_list main_fn				{
 									printf("AST created\n\n") ;
-			
-									//codegen_main($3) ;
+
 									//printf("Code generation complete\n") ;
 
 									exit(0) ;
@@ -100,7 +100,7 @@ gid_list :
 gid :
 	ID							{ ginstall($1, t_num, 1, 0) ; }
 	| ID '[' NUM ']'					{ ginstall($1, t_num, $3, 0) ; }
-	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0, 0) ; }		//ginstall sets global variable
+	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0, 1) ; }		//ginstall sets global variable
  	;												//'arguments' to NULL
 
 
@@ -112,6 +112,9 @@ fn_def_list :
 fn_def :
 	type ID '(' arg_list ')' '{' l_dec body '}'		{ 
 								  check_fn_def(t_num, $2, arguments)  ;
+								  add_to_ltable(arguments) ;	 //'arguments' chosen to be passed  
+								  				 //to make clear what the function does
+								  //codegen_main($8) ;
 								  if(ltable != NULL)	
 								  	free(ltable) ;
 								  ltable = NULL ;					 
@@ -120,6 +123,7 @@ fn_def :
 
 main_fn :
 	INTEGER MAIN '(' ')' '{' l_dec body '}'			{ 
+								  //codegen_main($7) ;
 							          if(ltable != NULL)				
 								  	free(ltable) ; 
 								  ltable = NULL ;					 
@@ -127,24 +131,25 @@ main_fn :
 	;
 
 arg_list :
-	arg ';' arg_list
+	arg_list ';' arg
+	| arg
 	|
 	;
 
 arg :
-	arg_type id_list
+	l_type id_list
 	;
 
-arg_type :
-	INTEGER 						{ argt_num = 1 ; }
-	| BOOLEAN						{ argt_num = 2 ; }
+l_type :
+	INTEGER 						{ lt_num = 1 ; }
+	| BOOLEAN						{ lt_num = 2 ; }
 	;
 
 id_list :
-	ID							{ insert_arg(argt_num, $1, 0) ; }
-	| '&' ID 						{ insert_arg(argt_num, $2, 1) ; }
-	| ID ',' id_list					{ insert_arg(argt_num, $1, 0) ; }
-	| '&' ID ',' id_list					{ insert_arg(argt_num, $2, 1) ; }
+	ID							{ insert_arg(lt_num, $1, 0) ; }
+	| '&' ID 						{ insert_arg(lt_num, $2, 1) ; }
+	| ID ',' id_list					{ insert_arg(lt_num, $1, 0) ; }
+	| '&' ID ',' id_list					{ insert_arg(lt_num, $2, 1) ; }
 	;
 
 l_dec :
@@ -157,12 +162,12 @@ ldec_list :
 	;
 
 ldec_stat :
-	type var_list ';'
+	l_type var_list ';'
 	;
 	
 var_list :
-	ID							{ linstall($1,t_num); }
-	| var_list ',' ID					{ linstall($3,t_num); }
+	ID							{ linstall($1,lt_num); }
+	| var_list ',' ID					{ linstall($3,lt_num); }
 	;
 
 body :
@@ -205,15 +210,18 @@ stmt:
 act_par :											//actual parameters-for function call
 	 '&' ID							{ $$ = create_node(-2,'a',0,$2,NULL,NULL,NULL); }			
 	| expr							{ $$ = $1 ; }
-	| '&' ID ',' act_par					{ $$ = create_node(-2,'a',0,$2,NULL,NULL,$4) ; }
-	| expr ',' act_par					{ $$ = link_arg($1,$3) ; }
+	| act_par ',' '&' ID  					{ 
+								  node *temp = create_node(-2,'a',0,$4,NULL,NULL,NULL) ; 
+								  $$ = link_arg(temp,$1) ;                                    	
+								}
+	| act_par ',' expr					{ $$ = link_arg($3,$1) ; }
 	;
 
 
 expr:
 	ID	  						{ $$ = create_node(2,'a',0,$1,NULL,NULL,NULL); }
 	| ID '[' expr ']'					{ $$ = create_node(22,'a',0,$1,$3,NULL,NULL); }
-	| ID '(' act_par ')'					{ check_fn_call($1,$3); }
+	| ID '(' act_par ')'					{ $$ = create_node(5,'a',0,$1,$3,NULL,NULL); }
 	| NUM	  						{ $$ = create_node(0,'a',$1,"none",NULL,NULL,NULL); }
 	| '-' NUM %prec UMINUS 					{ $$ = create_node(0,'a',-$2,"none",NULL,NULL,NULL); }
 	| TRUE							{ $$ = create_node(0,'b',1,"none",NULL,NULL,NULL); }
@@ -241,7 +249,10 @@ void ginstall(char *name, int type, int size, int func_flag)
 	gsym *g, *prev ;
 	prev = glookup(name) ;
 	if(prev != NULL)
+	{
+		printf("%s : ",name) ;
 		yyerror("Variable/function declared more than once") ;
+	}
 	else
 	{	
 		g = (gsym *)malloc(sizeof(gsym)) ;
@@ -251,10 +262,18 @@ void ginstall(char *name, int type, int size, int func_flag)
 		g->type = type ;
 		g->size = size ;
 
-		g->binding = mem_index ;
 		g->func_flag = func_flag ;
-
-		mem_index += size ;
+		
+		if(func_flag != 1)
+		{
+			g->binding = mem_index ;
+			mem_index += size ;
+		}
+		else
+		{
+			g->binding = label_cnt ;
+			label_cnt++ ;
+		}
 
 		g->arguments = arguments ;
 		arguments = NULL ;
@@ -279,7 +298,10 @@ void linstall(char *name, int type)
 	lsym *l, *prev ;
 	prev = llookup(name) ;
 	if(prev != NULL)
+	{
+		printf("%s : ",name) ;
 		yyerror("Variable declared more than once") ;
+	}
 	else
 	{
 		l = (lsym *)malloc(sizeof(lsym)) ;
@@ -325,24 +347,33 @@ void check_fn_def(int type, char *name, arg_list_type *arguments)
 	arg_list_type *a1, *a2 ;
 	g = glookup(name) ;
 	if(g == NULL || g->func_flag == 0)
+	{
+		printf("%s : ",name) ;
 		yyerror("Function declaration missing !") ;
+	}
 	if(g->type != type)
+	{	printf("%s decl:%d defn:%d\n",name,g->type,type) ;
 		yyerror("Function declaration and definition have conflicting return types !") ;
-	
+	}
 	a1 = arguments ;
 	a2 = g->arguments ;
 
 	while((a1 != NULL) && (a2 != NULL))
 	{
 		if((a1->type != a2->type) || (strcmp(a1->name,a2->name) != 0) || (a1->ref != a2->ref))
+		{
+			printf("%s : ",name) ;
 			yyerror("Function declaration and definition have conflicting arguments !") ; 
+		}
 		a1 = a1->next_arg ;
 		a2 = a2->next_arg ;
 	}
 
 	if( ((a1 == NULL) && (a2 != NULL)) || ((a1 != NULL) && (a2 == NULL)) )
-		yyerror("Function declaration and definition have differ in number of arguments !") ;
-
+	{
+		printf("%s : ",name) ;
+		yyerror("Function declaration and definition have conflicting arguments !") ;
+	}
 	return ;
 }
 
@@ -353,22 +384,34 @@ void check_fn_call(char *name, node *n)
 
 	g = glookup(name) ;
 	if(g == NULL || g->func_flag == 0)
+	{
+		printf("%s : ",name) ;
 		yyerror("Function declaration and definition missing !") ;
+	}
 
 	a = g->arguments ;
 
 	while((a != NULL) && (n != NULL))
 	{
 		if(a->type != n->type)
-			yyerror("Arguments not of correct type !") ;
+		{
+			printf("%s : ",name,a->type,n->type) ;
+			yyerror("Arguments not matching function declaration and definition !") ;
+		}
 		if( (a->type == n->type) && ((a->ref == 1) && (n->node_type != -2)) )
-			yyerror("Call by reference expected") ;
+		{
+			printf("%s : ",name) ;
+			yyerror("Arguments not matching function declaration and definition !") ;
+		}
 		a = a->next_arg ;
 		n = n->st3 ;
 	}
 
 	if( ((a == NULL) && (n != NULL)) || ((a != NULL) && (n == NULL)) )
-		yyerror("Invalid number of arguments !") ;
+	{
+		printf("%s : ",name) ;
+		yyerror("Arguments not matching function declaration and definition !") ;
+	}
 	 
 	return ;
 }
@@ -379,6 +422,18 @@ node *link_arg(node *n1, node *n2)
 	return n1 ;
 }
 
+void add_to_ltable(arg_list_type *arguments)
+{
+	arg_list_type *a ;
+	a = arguments ;
+	
+	while(a != NULL)
+	{
+		linstall(a->name,a->type) ;
+		a = a->next_arg ;
+	}
+	return ;
+}
 node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) //sp passes both spec and type in node_des
 {
 	node *p ;
@@ -396,6 +451,7 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 						else
 							p->type = 1 ;
 						p->gentry = NULL ;
+						p->lentry = NULL ;
 						break ;
 
 		case 1 		:		p->spec = sp ;
@@ -446,15 +502,21 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 									break ;
 
 						}		
-						p->gentry = NULL ;		
+						p->gentry = NULL ;
+						p->lentry = NULL ;		
 						break ;
 
-		case 2		: 		l = llookup(name) ;
+		case 2		: 		
+
+		case -2		:		l = llookup(name) ;
 						if(l == NULL)
 						{
 							g = glookup(name) ;
 							if(g == NULL)
+							{
+								printf("%s : ",name) ;
 								yyerror("Variable not declared\n") ;
+							}
 							else
 							{
 								p->gentry = g ;
@@ -476,10 +538,14 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 							yyerror("Type mismatch\n") ;
 						g = glookup(name) ;
 						if(g == NULL)
-							yyerror("Variable not declared\n") ;
+						{
+							printf("%s : ",name) ;
+							yyerror("Array not declared\n") ;
+						}
 						p->gentry = g ;
 						p->name = strdup(name) ;
 						p->type = g->type ;
+						p->lentry = NULL ;
 						break ;
 
 		case 3		:		p->spec = sp ;
@@ -512,10 +578,24 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 									break ;
 						}
 						p->gentry = NULL ;
+						p->lentry = NULL ;
 						break ;
 
 		case 4		: 		p->type = 0 ;
 						p->gentry = NULL ;
+						p->lentry = NULL ;
+						break ;
+
+		case 5		:		check_fn_call(name,e1);
+ 
+						p->name = strdup(name) ;
+						
+						g = glookup(name) ;
+
+						p->gentry = g ;
+						p->type = g->type ;
+						p->lentry = NULL ; 
+					
 						break ;
 	}
 	
@@ -723,7 +803,7 @@ void free_reg()
 
 void yyerror(char *s)	
 {
-	fprintf(stderr, "%s\n",s) ;
+	printf("%s\n",s) ;
 	exit(1) ;
 }
 

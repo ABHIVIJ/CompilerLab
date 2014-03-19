@@ -12,7 +12,7 @@
 					return NUM ;
 				}
 
-[-+*/();,=><%\[\]\(\)\{\}]	return *yytext ;
+[-+*/();,=><%&\[\]\(\)\{\}]	return *yytext ;
 
 "decl" 				return DECL ;
 

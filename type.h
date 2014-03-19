@@ -15,7 +15,7 @@ typedef struct gsymbol
 			//2 for bool type
 			//for functions this indicates the return type
 	int size ;
-	int binding ;
+	int binding ;	//location in memory for variables and labelcnt for functions
 	int func_flag ; //0 for variable
 			//1 for function
 	arg_list_type *arguments ;
@@ -24,9 +24,9 @@ typedef struct gsymbol
 
 typedef struct lsymbol
 {
-	char *name ;
+	char *name ;				
 	int type ;
-	int binding ;
+	int binding ;				//in stage 9 binding is not given any value
 	struct lsymbol *next ;
 }lsym ;
 
@@ -37,6 +37,7 @@ typedef struct node_des
 			//2 for id	//22 for array		//-2 for &id
 			//3 for statements
 			//4 for slist-no value assigned for val or spec
+			//5 for function call
 
 	int type;	//0 for no type
 			//1 for int type
@@ -56,5 +57,5 @@ typedef struct node_des
 
 }node ;	
 
-
+//for function call st1 contains the arguments
 
