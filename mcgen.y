@@ -275,7 +275,7 @@ void ginstall(char *name, int type, int size, int func_flag)
 		}
 		else
 		{
-			g->binding = label_cnt ;
+			g->label = label_cnt ;
 			label_cnt++ ;
 		}
 

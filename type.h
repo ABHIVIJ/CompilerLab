@@ -15,7 +15,12 @@ typedef struct gsymbol
 			//2 for bool type
 			//for functions this indicates the return type
 	int size ;
-	int binding ;	//location in memory for variables and labelcnt for functions
+	union
+	{	
+		int binding ;	//location in memory for variables 
+		int label ;	//labelcnt for functions
+	}
+
 	int func_flag ; //0 for variable
 			//1 for function
 	arg_list_type *arguments ;
