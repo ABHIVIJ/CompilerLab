@@ -31,7 +31,7 @@ typedef struct lsymbol
 {
 	char *name ;				
 	int type ;
-	int binding ;				//in stage 9 binding is not given any value
+	int binding ;				
 	struct lsymbol *next ;
 }lsym ;
 
@@ -43,6 +43,7 @@ typedef struct node_des
 			//3 for statements
 			//4 for slist-no value assigned for val or spec
 			//5 for function call
+			//6 for body of functions except main
 
 	int type;	//0 for no type
 			//1 for int type

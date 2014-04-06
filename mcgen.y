@@ -4,12 +4,14 @@
 	#include<stdlib.h>
 	#include "type.h"
 
+	#define stack_start 500
+
 	node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, node *e3) ;
 
 	void ginstall(char *name, int type, int size, int func_flag) ;
 	gsym *glookup(char *name) ;
 
-	void linstall(char *name, int type) ;
+	void linstall(char *name, int type, int binding) ;
 	lsym *llookup(char *name) ;
 
 	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 :i.e. arguments will be reverse order since insertion at beginning
@@ -17,7 +19,7 @@
 	void check_fn_call(char *name, node *n) ;	
 	node *link_arg(node *n1, node *n2) ;
 
-	void add_to_ltable(arg_list_type *arguments) ; //! does not store ref value in ltable !
+	void add_to_ltable(arg_list_type *arguments) ; 
 
 	void codegen_main(node *e) ;
 	int codegen(node *e) ;
@@ -36,7 +38,9 @@
 	arg_list_type *arguments = NULL ;
 	lsym *ltable = NULL ;
 
-	int reg_cnt = 0, label_cnt = 0 ;
+	int reg_cnt = 0, label_cnt = 0 ; 
+
+	int lvar_cnt = 0 ; 
 
 	FILE *fp ;
 
@@ -60,7 +64,7 @@
 %left '*' '/' '%'
 %nonassoc UMINUS NOT 
 
-%type <nptr> expr stmt slist act_par body 
+%type <nptr> expr stmt slist act_par body fn_def
 
 %%
 
@@ -110,25 +114,38 @@ fn_def_list :
 	;
 
 fn_def :
-	type ID '(' arg_list ')' '{' l_dec body '}'		{ 
+	type ID '(' arg_list ')' '{' l_dec body RETURN '(' expr ')' ';' '}'	
+								{ 
 								  check_fn_def(t_num, $2, arguments)  ;
 								  add_to_ltable(arguments) ;	 //'arguments' chosen to be passed  
 								  				 //to make clear what the function does
-								  //codegen_main($8) ;
+								  node *temp = create_node(3,'x',0,"none",$11,NULL,NULL) ;
+								  temp = create_node(4,'a',0,"none",$8,temp,NULL) ;	
+	
+								  $$ = create_node(6,'a',0,$2,temp,NULL,NULL) ;	
+								  int num ;
+								  num = codegen($$) ;
 								  if(ltable != NULL)	
 								  	free(ltable) ;
-								  ltable = NULL ;					 
+								  ltable = NULL ;
+								  lvar_cnt = 0 ;						 
 								}
 	;
 
 main_fn :
-	type MAIN '(' ')' '{' l_dec body '}'			{ 
+	type MAIN '(' ')' '{' l_dec body RETURN '(' NUM ')' ';' '}'			
+								{ 
 								  if(t_num == 2)
 									yyerror("Return type of main should be integer\n") ;
-								  //codegen_main($7) ;
+
+								  //node *temp = create_node(3,'x',0,"none",$11,NULL,NULL) ;
+								  //temp = create_node(4,'a',0,"none",$8,temp,NULL) ;
+	
+								  codegen_main($7) ;
 							          if(ltable != NULL)				
 								  	free(ltable) ; 
-								  ltable = NULL ;					 
+								  ltable = NULL ;
+ 								  lvar_cnt = 0 ;					 
 								}
 	;
 
@@ -168,8 +185,8 @@ ldec_stat :
 	;
 	
 var_list :
-	ID							{ linstall($1,lt_num); }
-	| var_list ',' ID					{ linstall($3,lt_num); }
+	ID							{ linstall($1,lt_num,lvar_cnt) ; }
+	| var_list ',' ID					{ linstall($3,lt_num,lvar_cnt) ; }
 	;
 
 body :
@@ -207,18 +224,18 @@ stmt:
 	| IF '(' expr ')' THEN slist  ELSE slist ENDIF ';'	{ $$ = create_node(3,'e',0,"none",$3,$6,$8); }
 	| WHILE '(' expr ')' DO slist ENDWHILE ';'		{ $$ = create_node(3,'w',0,"none",$3,$6,NULL); }
 	
-	| RETURN '(' expr ')' ';'				{ $$ = create_node(3,'x',0,"none",$3,NULL,NULL); }
+//	| RETURN '(' expr ')' ';'				{ $$ = create_node(3,'x',0,"none",$3,NULL,NULL); }
 	;
 
 
 act_par :											//actual parameters-for function call
 	 '&' ID							{ $$ = create_node(-2,'a',0,$2,NULL,NULL,NULL); }			
-	| expr							{ $$ = $1 ; }
+	| expr							{ $$ = $1; }
 	| act_par ',' '&' ID  					{ 
-								  node *temp = create_node(-2,'a',0,$4,NULL,NULL,NULL) ; 
-								  $$ = link_arg(temp,$1) ;                                    	
+								  node *temp = create_node(-2,'a',0,$4,NULL,NULL,NULL); 
+								  $$ = link_arg(temp,$1);                                    	
 								}
-	| act_par ',' expr					{ $$ = link_arg($3,$1) ; }
+	| act_par ',' expr					{ $$ = link_arg($3,$1); }
 	;
 
 
@@ -272,6 +289,8 @@ void ginstall(char *name, int type, int size, int func_flag)
 		{
 			g->binding = mem_index ;
 			mem_index += size ;
+			if(mem_index >= stack_start)
+				yyerror("Not enough memory space to store variables") ;
 		}
 		else
 		{
@@ -297,7 +316,7 @@ gsym *glookup(char *name)
 	return g ;
 }
 
-void linstall(char *name, int type)
+void linstall(char *name, int type, int binding)
 {
 	lsym *l, *prev ;
 	prev = llookup(name) ;
@@ -313,9 +332,12 @@ void linstall(char *name, int type)
 			yyerror("No memory space !") ;
 		l->name = strdup(name) ;
 		l->type = type ;
+		l->binding = binding ;
 
 		l->next = ltable ;
 		ltable = l ;
+
+		lvar_cnt++ ;
 	}
 	return ;
 }
@@ -399,7 +421,7 @@ void check_fn_call(char *name, node *n)
 	{
 		if(a->type != n->type)
 		{
-			printf("%s : ",name,a->type,n->type) ;
+			printf("%s : ",name) ;
 			yyerror("Arguments not matching function declaration and definition !") ;
 		}
 		if( (a->type == n->type) && ((a->ref == 1) && (n->node_type != -2)) )
@@ -429,11 +451,20 @@ node *link_arg(node *n1, node *n2)
 void add_to_ltable(arg_list_type *arguments)
 {
 	arg_list_type *a ;
+	int n_of_args = 0 ;
+
 	a = arguments ;
+
+	while(a != NULL)
+	{
+		a = a->next_arg ;
+		n_of_args++ ;
+	}
 	
 	while(a != NULL)
 	{
-		linstall(a->name,a->type) ;
+		linstall(a->name,a->type,-n_of_args,a->ref) ;
+		n_of_args-- ;
 		a = a->next_arg ;
 	}
 	return ;
@@ -607,6 +638,16 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 						p->lentry = NULL ; 
 					
 						break ;
+
+		case 6		:		p->type = 0 ;
+						p->name = strdup(name) ;
+
+						g = glookup(name) ;
+
+						p->gentry = g ;
+						p->lentry = NULL ;
+						break ;
+					
 	}
 	
 	p->st1 = e1 ;
@@ -621,6 +662,8 @@ void codegen_main(node *e)
 	int num ;
 	fp = fopen("m_code","w") ;
 	fprintf(fp,"START\n") ;
+	fprintf(fp,"MOV BP, %d\n",stack_start) ; //specifying the beginning of stack
+	fprintf(fp,"MOV SP, %d\n",stack_start-1) ;
 	num = codegen(e) ;
 	fprintf(fp,"HALT\n") ;
 	fclose(fp) ;
@@ -630,6 +673,7 @@ void codegen_main(node *e)
 int codegen(node *e)
 {
 	int a, b ;
+	int i ;
 	int l_cnt1, l_cnt2 ;
 	
 	switch(e->node_type)
@@ -701,8 +745,17 @@ int codegen(node *e)
 					if(e->spec != '!')	
 						free_reg() ;
 					return a ;
-					
-		case 2		:	fprintf(fp,"MOV R%d, [%d]\n",reg_cnt,e->gentry->binding) ;
+
+		case 2		:		
+	
+		case -2		:	if(e->lentry != NULL)			//local variable
+					{					
+						fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
+						fprintf(fp,"ADD R%d, %d\n",reg_cnt,e->lentry->binding) ; 
+						fprintf(fp,"MOV R%d, [R%d]\n",reg_cnt,reg_cnt) ; 
+					}					
+					else					//global variable
+						fprintf(fp,"MOV R%d, [%d]\n",reg_cnt,e->gentry->binding) ;
 					next_reg() ;
 					return reg_cnt-1 ;
 
@@ -714,16 +767,25 @@ int codegen(node *e)
 					
 		case 3		:	switch(e->spec)
 					{
-						case '='	:	a = codegen(e->st2) ;
-									if(e->st1->node_type == 2)
-										fprintf(fp,"MOV [%d], R%d\n",e->st1->gentry->binding,a) ;
-									else
+						case '='	:	b = codegen(e->st2) ;
+									if(e->st1->node_type == 2)     // of the form : id = expr
 									{
-										b = codegen(e->st1->st1) ;
+									  if(e->lentry != NULL)
+									  {
+									    fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
+									    fprintf(fp,"ADD R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
+									    fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,b) ;
+									  }
+									  else 
+									    fprintf(fp,"MOV [%d], R%d\n",e->st1->gentry->binding,b) ;
+									}
+									else                       // of the form : id[expr] = expr    	
+									{
+										a = codegen(e->st1->st1) ;
 										fprintf(fp,"MOV R%d, %d\n",reg_cnt,
 													       e->st1->gentry->binding) ;
-										fprintf(fp,"ADD R%d, R%d\n",b,reg_cnt) ;
-										fprintf(fp,"MOV [R%d], R%d\n",b,a) ;
+										fprintf(fp,"ADD R%d, R%d\n",a,reg_cnt) ;
+										fprintf(fp,"MOV [R%d], R%d\n",a,b) ;
 										free_reg() ;
 									}
 									free_reg() ;
@@ -788,6 +850,23 @@ int codegen(node *e)
 									fprintf(fp,"L%d :\n",l_cnt1) ;			//L0:
 
 									break ;
+
+						case 'x'	:	//actions by callee on return
+									a = codegen(e->st1) ;
+									
+									fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
+									fprintf(fp,"SUB R%d, 2\n",reg_cnt) ;
+									fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,a) ;
+
+									for(i=1;i<=lvar_cnt;++i)
+										fprintf(fp,"POP R%d\n") ;
+
+									fprintf(fp,"POP BP\n") ;
+									fprintf(fp,"RET\n\n\n") ;
+					
+									break ;
+									
+									 
 					}
 					return -1 ;
 
@@ -795,7 +874,90 @@ int codegen(node *e)
 					b = codegen(e->st2) ;
 					return -1 ;
 
-		//case 5 		:	//this part to be done - function call impementation
+//function call impementation
+
+		case 5 		:	//Actions by caller before call
+					node *e_arg ;
+					int arg_cnt ;
+					arg_cnt = 0 ;
+
+					for(i=0;i<reg_cnt;++i)
+						fprintf(fp,"PUSH R%d\n",i) ;
+	
+					//push arguments
+					e_arg = e->st1 ;
+					while(e_arg != NULL)
+					{ 
+						a = codegen(e_arg) ;
+						fprintf(fp,"MOV R0, R%d\n",a) ;
+						fprintf(fp,"PUSH R0\n") ;
+
+						e_arg = e_arg->st3 ;
+					}
+					
+					fprintf(fp,"PUSH R0\n") ; //space for return value
+					
+					fprintf(fp,"CALL L%d\n",e->gentry->label) ;
+		
+					//Actions by caller after return
+					fprintf(fp,"POP R%d\n",reg_cnt) ;	//placing return value in a register
+
+					next_reg() ;
+
+									//pop arguments
+
+					fprintf(fp,"\\\\for references\n") ;	//comment
+					e_arg = e->st1 ;
+					while(e_arg != NULL)
+					{
+						if(e_arg->node_type == -2) //change value in original location for reference type
+						{
+							fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
+							fprintf(fp,"ADD R%d, %d\n",reg_cnt,reg_cnt) ;
+							fprintf(fp,"ADD R%d, %d\n",reg_cnt,arg_cnt) ;
+ 
+							if(e_arg->lentry != NULL)
+							{
+								a = e_arg->lentry->binding ;
+								next_reg() ;
+								fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
+								fprintf(fp,"ADD R%d, %d\n",reg_cnt,a) ;
+								fprintf(fp,"MOV [R%d], [R%d]\n",reg_cnt,reg_cnt-1) ;
+								free_reg() ;
+							}
+							else
+							{
+								a = e_arg->gentry->binding ;
+								fprintf(fp,"MOV [%d], [R%d]\n",a,reg_cnt) ;
+							}				
+						}
+						e_arg = e_arg->st3 ;
+						arg_cnt++ ;
+					}
+					fprintf(fp,"\\\\references over\n") ;	//comment
+
+					e_arg = e->st1 ;
+					while(e->arg != NULL)
+					{
+						fprintf(fp,"POP R%d\n",reg_cnt) ;
+						e_arg = e_arg->st3 ;
+					}
+
+					for(i=reg_cnt-2;i>=0;--i)	//pop registers
+						fprintf(fp,"POP R%d\n",i) ;
+					
+					return reg_cnt-1 ;
+
+		case 6		:	//actions by callee on entry
+					fprintf(fp,"%d : \n",e->gentry->label) ;
+					fprintf(fp,"PUSH BP\n") ;
+					fprintf(fp,"MOV BP, SP\n") ;
+					
+					for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
+						fprintf(fp,"PUSH R%d\n") ;					
+					
+					a = codegen(e->st1) ;
+					return -1 ;
 	}
 }
 
