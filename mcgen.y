@@ -64,13 +64,13 @@
 %left '*' '/' '%'
 %nonassoc UMINUS NOT 
 
-%type <nptr> expr stmt slist act_par body fn_def
+%type <nptr> expr stmt slist act_par fn_def
 
 %%
 
 pgm :
 	gl_dec fn_def_list main_fn				{
-									printf("AST created\n\n") ;
+									printf("AST created\n") ;
 
 									printf("Code generation complete\n") ;
 
@@ -104,7 +104,8 @@ gid_list :
 gid :
 	ID							{ ginstall($1, t_num, 1, 0) ; }
 	| ID '[' NUM ']'					{ ginstall($1, t_num, $3, 0) ; }
-	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0, 1) ; }		//ginstall sets global variable
+	| ID '(' arg_list ')'					{ ginstall($1, t_num, 0, 1) ; }
+										//ginstall sets global variable
  	;												//'arguments' to NULL
 
 
@@ -114,17 +115,18 @@ fn_def_list :
 	;
 
 fn_def :
-	type ID '(' arg_list ')' '{' l_dec body RETURN '(' expr ')' ';' '}'	
+	type ID '(' def_arg_list ')' '{' l_dec BGN slist  RETURN '(' expr ')' ';' END '}'	
 								{ 
 								  check_fn_def(t_num, $2, arguments)  ;
-								  add_to_ltable(arguments) ;	 //'arguments' chosen to be passed  
-								  				 //to make clear what the function does
-								  node *temp = create_node(3,'x',0,"none",$11,NULL,NULL) ;
-								  temp = create_node(4,'a',0,"none",$8,temp,NULL) ;	
+
+								  node *temp = create_node(3,'x',0,"none",$12,NULL,NULL) ;
+								  temp = create_node(4,'a',0,"none",$9,temp,NULL) ;	
 	
 								  $$ = create_node(6,'a',0,$2,temp,NULL,NULL) ;	
+									
 								  int num ;
 								  num = codegen($$) ;
+									
 								  if(ltable != NULL)	
 								  	free(ltable) ;
 								  ltable = NULL ;
@@ -133,7 +135,7 @@ fn_def :
 	;
 
 main_fn :
-	type MAIN '(' ')' '{' l_dec body RETURN '(' NUM ')' ';' '}'			
+	type MAIN '(' ')' '{' l_dec  BGN slist  RETURN '(' NUM ')' ';' END '}'			
 								{ 
 								  if(t_num == 2)
 									yyerror("Return type of main should be integer\n") ;
@@ -141,12 +143,17 @@ main_fn :
 								  //node *temp = create_node(3,'x',0,"none",$11,NULL,NULL) ;
 								  //temp = create_node(4,'a',0,"none",$8,temp,NULL) ;
 	
-								  codegen_main($7) ;
+								  codegen_main($8) ;
 							          if(ltable != NULL)				
 								  	free(ltable) ; 
 								  ltable = NULL ;
  								  lvar_cnt = 0 ;					 
 								}
+	;
+
+def_arg_list :							
+	arg_list 						{add_to_ltable(arguments) ;}	 //'arguments' chosen to be passed  
+								  				 //to make clear what the function does
 	;
 
 arg_list :
@@ -187,10 +194,6 @@ ldec_stat :
 var_list :
 	ID							{ linstall($1,lt_num,lvar_cnt) ; }
 	| var_list ',' ID					{ linstall($3,lt_num,lvar_cnt) ; }
-	;
-
-body :
-	BGN slist END						{ $$ = $2 ; }
 	;
 
 slist:
@@ -321,10 +324,7 @@ void linstall(char *name, int type, int binding)
 	lsym *l, *prev ;
 	prev = llookup(name) ;
 	if(prev != NULL)
-	{
-		printf("%s : ",name) ;
 		yyerror("Variable declared more than once") ;
-	}
 	else
 	{
 		l = (lsym *)malloc(sizeof(lsym)) ;
@@ -461,6 +461,8 @@ void add_to_ltable(arg_list_type *arguments)
 		n_of_args++ ;
 	}
 	
+	a = arguments ;
+
 	while(a != NULL)
 	{
 		linstall(a->name,a->type,-n_of_args) ;
@@ -660,7 +662,7 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 void codegen_main(node *e)
 {
 	int num ;
-	fp = fopen("m_code","w") ;
+	
 	fprintf(fp,"START\n") ;
 	fprintf(fp,"MOV BP, %d\n",stack_start) ; //specifying the beginning of stack
 	fprintf(fp,"MOV SP, %d\n",stack_start-1) ;
@@ -795,11 +797,20 @@ int codegen(node *e)
 									
 						case 'r'	:	if(e->st1->node_type == 2)
 									{
-										fprintf(fp,"IN R%d\n",reg_cnt) ;
-									     	fprintf(fp,"MOV [%d], R%d\n",e->st1->gentry->binding,
+									  fprintf(fp,"IN R%d\n",reg_cnt) ;
+									  if(e->st1->lentry != NULL)
+									  {
+									    next_reg() ;
+									    fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
+									    fprintf(fp,"ADD R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
+									    fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,reg_cnt-1) ;
+								            free_reg() ;
+									  } 
+									  else	
+									     fprintf(fp,"MOV [%d], R%d\n",e->st1->gentry->binding,
 																reg_cnt) ;
 									}
-									else
+									else //for array
 									{
 										a = codegen(e->st1->st1) ;
                      								fprintf(fp,"MOV R%d, %d\n",reg_cnt,
@@ -949,7 +960,7 @@ int codegen(node *e)
 					return reg_cnt-1 ;
 
 		case 6		:	//actions by callee on entry
-					fprintf(fp,"%d : \n",e->gentry->label) ;
+					fprintf(fp,"L%d : \n",e->gentry->label) ;
 					fprintf(fp,"PUSH BP\n") ;
 					fprintf(fp,"MOV BP, SP\n") ;
 					
@@ -957,6 +968,7 @@ int codegen(node *e)
 						fprintf(fp,"PUSH R%d\n",i) ;					
 					
 					a = codegen(e->st1) ;
+
 					return -1 ;
 	}
 }
@@ -985,6 +997,7 @@ int main(int argc,char *argv[])
 {
 
 	yyin = fopen(argv[1],"r");
+	fp = fopen("m_code","w") ;
 	yyparse() ;
 	fclose(yyin) ;
 	return 0 ;
