@@ -72,7 +72,7 @@ pgm :
 	gl_dec fn_def_list main_fn				{
 									printf("AST created\n\n") ;
 
-									//printf("Code generation complete\n") ;
+									printf("Code generation complete\n") ;
 
 									exit(0) ;
 								}
@@ -463,7 +463,7 @@ void add_to_ltable(arg_list_type *arguments)
 	
 	while(a != NULL)
 	{
-		linstall(a->name,a->type,-n_of_args,a->ref) ;
+		linstall(a->name,a->type,-n_of_args) ;
 		n_of_args-- ;
 		a = a->next_arg ;
 	}
@@ -675,6 +675,8 @@ int codegen(node *e)
 	int a, b ;
 	int i ;
 	int l_cnt1, l_cnt2 ;
+	node *e_arg ;
+	int arg_cnt ;
 	
 	switch(e->node_type)
 	{
@@ -859,7 +861,7 @@ int codegen(node *e)
 									fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,a) ;
 
 									for(i=1;i<=lvar_cnt;++i)
-										fprintf(fp,"POP R%d\n") ;
+										fprintf(fp,"POP R%d\n",i) ;
 
 									fprintf(fp,"POP BP\n") ;
 									fprintf(fp,"RET\n\n\n") ;
@@ -877,8 +879,6 @@ int codegen(node *e)
 //function call impementation
 
 		case 5 		:	//Actions by caller before call
-					node *e_arg ;
-					int arg_cnt ;
 					arg_cnt = 0 ;
 
 					for(i=0;i<reg_cnt;++i)
@@ -937,7 +937,7 @@ int codegen(node *e)
 					fprintf(fp,"\\\\references over\n") ;	//comment
 
 					e_arg = e->st1 ;
-					while(e->arg != NULL)
+					while(e_arg != NULL)
 					{
 						fprintf(fp,"POP R%d\n",reg_cnt) ;
 						e_arg = e_arg->st3 ;
@@ -954,7 +954,7 @@ int codegen(node *e)
 					fprintf(fp,"MOV BP, SP\n") ;
 					
 					for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
-						fprintf(fp,"PUSH R%d\n") ;					
+						fprintf(fp,"PUSH R%d\n",i) ;					
 					
 					a = codegen(e->st1) ;
 					return -1 ;

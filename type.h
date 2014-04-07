@@ -19,7 +19,7 @@ typedef struct gsymbol
 	{	
 		int binding ;	//location in memory for variables 
 		int label ;	//labelcnt for functions
-	}
+	};
 
 	int func_flag ; //0 for variable
 			//1 for function
