@@ -70,8 +70,6 @@
 
 pgm :
 	gl_dec fn_def_list main_fn				{
-									printf("AST created\n") ;
-
 									printf("Code generation complete\n") ;
 
 									exit(0) ;
@@ -130,8 +128,10 @@ fn_def :
 								  if(ltable != NULL)	
 								  	free(ltable) ;
 								  ltable = NULL ;
-								  lvar_cnt = 0 ;						 
-								}
+								  lvar_cnt = 0 ;
+
+								  reg_cnt = 0 ;	//check again if this is right
+ 								}
 	;
 
 main_fn :
@@ -198,7 +198,7 @@ var_list :
 
 slist:
 	slist stmt						{ $$ = create_node(4,'a',0,"none",$1,$2,NULL) ; }
-	| stmt							{ $$ = $1 ; }
+	| 							{ $$ = NULL ; }
 	;
 
 stmt:
@@ -465,7 +465,7 @@ void add_to_ltable(arg_list_type *arguments)
 
 	while(a != NULL)
 	{
-		linstall(a->name,a->type,-n_of_args) ;
+		linstall(a->name,a->type,-(n_of_args+2)) ;
 		n_of_args-- ;
 		a = a->next_arg ;
 	}
@@ -661,12 +661,25 @@ node *create_node(int n_type, char sp, int num, char *name, node *e1, node *e2, 
 
 void codegen_main(node *e)
 {
-	int num ;
+	int num, i ;
 	
 	fprintf(fp,"START\n") ;
+
 	fprintf(fp,"MOV BP, %d\n",stack_start) ; //specifying the beginning of stack
 	fprintf(fp,"MOV SP, %d\n",stack_start-1) ;
+
+	for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
+		fprintf(fp,"PUSH R0\n") ;
+
+	fprintf(fp,"\n") ;
+
 	num = codegen(e) ;
+
+	fprintf(fp,"\n") ;
+
+	for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
+		fprintf(fp,"POP R0\n") ;
+
 	fprintf(fp,"HALT\n") ;
 	fclose(fp) ;
 	return ;
@@ -754,8 +767,11 @@ int codegen(node *e)
 	
 		case -2		:	if(e->lentry != NULL)			//local variable
 					{					
-						fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
-						fprintf(fp,"ADD R%d, %d\n",reg_cnt,e->lentry->binding) ; 
+						fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->lentry->binding) ;
+						next_reg() ;
+						fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
+						fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+						free_reg() ;
 						fprintf(fp,"MOV R%d, [R%d]\n",reg_cnt,reg_cnt) ; 
 					}					
 					else					//global variable
@@ -766,7 +782,8 @@ int codegen(node *e)
 		case 22		:	a = codegen(e->st1) ;
 					fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->gentry->binding) ;
 					fprintf(fp,"ADD R%d, R%d\n",a,reg_cnt) ;
-					fprintf(fp,"MOV R%d, [R%d]\n",a,a) ;//here we used R0 but curr reg is R1:so no need of next or free
+					fprintf(fp,"MOV R%d, [R%d]\n",a,a) ;
+								//here we used R0 but curr reg is R1:so no need of next or free
 					return reg_cnt-1 ;
 					
 		case 3		:	switch(e->spec)
@@ -776,8 +793,11 @@ int codegen(node *e)
 									{
 									  if(e->lentry != NULL)
 									  {
-									    fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
-									    fprintf(fp,"ADD R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
+									    fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
+									    next_reg() ;
+									    fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
+									    fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+									    free_reg() ;
 									    fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,b) ;
 									  }
 									  else 
@@ -801,8 +821,11 @@ int codegen(node *e)
 									  if(e->st1->lentry != NULL)
 									  {
 									    next_reg() ;
-									    fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
-									    fprintf(fp,"ADD R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
+									    fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
+									    next_reg() ;
+									    fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
+									    fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+									    free_reg() ;
 									    fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,reg_cnt-1) ;
 								            free_reg() ;
 									  } 
@@ -867,15 +890,18 @@ int codegen(node *e)
 						case 'x'	:	//actions by callee on return
 									a = codegen(e->st1) ;
 									
-									fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
-									fprintf(fp,"SUB R%d, 2\n",reg_cnt) ;
+									fprintf(fp,"MOV R%d, -2\n",reg_cnt) ;
+									next_reg() ;
+									fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
+									fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+									free_reg() ;
 									fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,a) ;
 
 									for(i=1;i<=lvar_cnt;++i)
 										fprintf(fp,"POP R%d\n",i) ;
 
 									fprintf(fp,"POP BP\n") ;
-									fprintf(fp,"RET\n\n\n") ;
+									fprintf(fp,"RET\n\n\n\n") ;
 					
 									break ;
 									
@@ -883,7 +909,8 @@ int codegen(node *e)
 					}
 					return -1 ;
 
-		case 4		:	a = codegen(e->st1) ;
+		case 4		:	if(e->st1 != NULL)
+						a = codegen(e->st1) ;
 					b = codegen(e->st2) ;
 					return -1 ;
 
@@ -900,8 +927,7 @@ int codegen(node *e)
 					while(e_arg != NULL)
 					{ 
 						a = codegen(e_arg) ;
-						fprintf(fp,"MOV R0, R%d\n",a) ;
-						fprintf(fp,"PUSH R0\n") ;
+						fprintf(fp,"PUSH R%d\n",a) ;
 
 						e_arg = e_arg->st3 ;
 					}
@@ -917,22 +943,30 @@ int codegen(node *e)
 
 									//pop arguments
 
-					fprintf(fp,"\\\\for references\n") ;	//comment
 					e_arg = e->st1 ;
 					while(e_arg != NULL)
 					{
 						if(e_arg->node_type == -2) //change value in original location for reference type
 						{
-							fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
-							fprintf(fp,"ADD R%d, %d\n",reg_cnt,reg_cnt) ;
-							fprintf(fp,"ADD R%d, %d\n",reg_cnt,arg_cnt) ;
+							fprintf(fp,"MOV R%d, %d\n",reg_cnt,reg_cnt) ;
+							next_reg() ;
+						        fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
+						        fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+							free_reg() ;
+							next_reg() ;
+							fprintf(fp,"MOV R%d, %d\n",reg_cnt,arg_cnt) ;
+							fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+							free_reg() ;
  
 							if(e_arg->lentry != NULL)
 							{
 								a = e_arg->lentry->binding ;
 								next_reg() ;
-								fprintf(fp,"MOV R%d, BP\n",reg_cnt) ;
-								fprintf(fp,"ADD R%d, %d\n",reg_cnt,a) ;
+								fprintf(fp,"MOV R%d, %d\n",reg_cnt,a) ;
+								next_reg() ;
+								fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
+								fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+								free_reg() ;
 								fprintf(fp,"MOV [R%d], [R%d]\n",reg_cnt,reg_cnt-1) ;
 								free_reg() ;
 							}
@@ -945,7 +979,6 @@ int codegen(node *e)
 						e_arg = e_arg->st3 ;
 						arg_cnt++ ;
 					}
-					fprintf(fp,"\\\\references over\n") ;	//comment
 
 					e_arg = e->st1 ;
 					while(e_arg != NULL)
@@ -965,7 +998,7 @@ int codegen(node *e)
 					fprintf(fp,"MOV BP, SP\n") ;
 					
 					for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
-						fprintf(fp,"PUSH R%d\n",i) ;					
+						fprintf(fp,"PUSH R0\n") ;					
 					
 					a = codegen(e->st1) ;
 

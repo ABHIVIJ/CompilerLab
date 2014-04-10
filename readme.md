@@ -3,5 +3,5 @@ stack from location 500
 
 push registers upto reg_cnt into stack 
  
-******code generated
+******reg_cnt = 0 after fn_def . Check if this is correct
 
