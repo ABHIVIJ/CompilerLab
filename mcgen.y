@@ -14,7 +14,7 @@
 	void linstall(char *name, int type, int binding) ;
 	lsym *llookup(char *name) ;
 
-	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 :i.e. arguments will be reverse order since insertion at beginning
+	void insert_arg(int type, char *name, int ref) ;//arg3-arg2-arg1 :i.e. arguments will be reverse order since insertion at begn
 	void check_fn_def(int type, char *name, arg_list_type *arguments) ;
 	void check_fn_call(char *name, node *n) ;	
 	node *link_arg(node *n1, node *n2) ;
@@ -116,10 +116,10 @@ fn_def :
 	type ID '(' def_arg_list ')' '{' l_dec BGN slist  RETURN '(' expr ')' ';' END '}'	
 								{ 
 								  check_fn_def(t_num, $2, arguments)  ;
-
+								  
 								  node *temp = create_node(3,'x',0,"none",$12,NULL,NULL) ;
 								  temp = create_node(4,'a',0,"none",$9,temp,NULL) ;	
-	
+								  
 								  $$ = create_node(6,'a',0,$2,temp,NULL,NULL) ;	
 									
 								  int num ;
@@ -192,8 +192,14 @@ ldec_stat :
 	;
 	
 var_list :
-	ID							{ linstall($1,lt_num,lvar_cnt) ; }
-	| var_list ',' ID					{ linstall($3,lt_num,lvar_cnt) ; }
+	ID							{ 
+									linstall($1,lt_num,lvar_cnt) ; 
+									//lvar_cnt++ ;
+								}
+	| var_list ',' ID					{ 
+									linstall($3,lt_num,lvar_cnt) ; 
+									//lvar_cnt++ ;
+								}
 	;
 
 slist:
@@ -337,6 +343,7 @@ void linstall(char *name, int type, int binding)
 		l->next = ltable ;
 		ltable = l ;
 
+		printf("%d %s\n",lvar_cnt,name) ;
 		lvar_cnt++ ;
 	}
 	return ;
@@ -691,8 +698,8 @@ int codegen(node *e)
 	int i ;
 	int l_cnt1, l_cnt2 ;
 	node *e_arg ;
-	int arg_cnt ;
-	
+	int arg_cnt, reg_cnt_old ;
+
 	switch(e->node_type)
 	{
 		case 0		:	fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->val) ;	
@@ -789,9 +796,10 @@ int codegen(node *e)
 		case 3		:	switch(e->spec)
 					{
 						case '='	:	b = codegen(e->st2) ;
+									
 									if(e->st1->node_type == 2)     // of the form : id = expr
 									{
-									  if(e->lentry != NULL)
+									  if(e->st1->lentry != NULL)
 									  {
 									    fprintf(fp,"MOV R%d, %d\n",reg_cnt,e->st1->lentry->binding) ;
 									    next_reg() ;
@@ -884,7 +892,6 @@ int codegen(node *e)
 									fprintf(fp,"JMP L%d\n",l_cnt2) ;		//JMP L1
 
 									fprintf(fp,"L%d :\n",l_cnt1) ;			//L0:
-
 									break ;
 
 						case 'x'	:	//actions by callee on return
@@ -902,7 +909,6 @@ int codegen(node *e)
 
 									fprintf(fp,"POP BP\n") ;
 									fprintf(fp,"RET\n\n\n\n") ;
-					
 									break ;
 									
 									 
@@ -922,6 +928,9 @@ int codegen(node *e)
 					for(i=0;i<reg_cnt;++i)
 						fprintf(fp,"PUSH R%d\n",i) ;
 	
+					reg_cnt_old = reg_cnt ;
+					reg_cnt = 0 ;
+
 					//push arguments
 					e_arg = e->st1 ;
 					while(e_arg != NULL)
@@ -937,6 +946,8 @@ int codegen(node *e)
 					fprintf(fp,"CALL L%d\n",e->gentry->label) ;
 		
 					//Actions by caller after return
+
+					reg_cnt = reg_cnt_old ;
 					fprintf(fp,"POP R%d\n",reg_cnt) ;	//placing return value in a register
 
 					next_reg() ;
@@ -996,12 +1007,11 @@ int codegen(node *e)
 					fprintf(fp,"L%d : \n",e->gentry->label) ;
 					fprintf(fp,"PUSH BP\n") ;
 					fprintf(fp,"MOV BP, SP\n") ;
-					
+
 					for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
 						fprintf(fp,"PUSH R0\n") ;					
 					
 					a = codegen(e->st1) ;
-
 					return -1 ;
 	}
 }
