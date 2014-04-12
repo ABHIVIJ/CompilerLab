@@ -139,9 +139,6 @@ main_fn :
 								{ 
 								  if(t_num == 2)
 									yyerror("Return type of main should be integer\n") ;
-
-								  //node *temp = create_node(3,'x',0,"none",$11,NULL,NULL) ;
-								  //temp = create_node(4,'a',0,"none",$8,temp,NULL) ;
 	
 								  codegen_main($8) ;
 							          if(ltable != NULL)				
@@ -193,12 +190,12 @@ ldec_stat :
 	
 var_list :
 	ID							{ 
-									linstall($1,lt_num,lvar_cnt) ; 
-									//lvar_cnt++ ;
+									linstall($1,lt_num,lvar_cnt+1) ; 
+									lvar_cnt++ ;
 								}
 	| var_list ',' ID					{ 
-									linstall($3,lt_num,lvar_cnt) ; 
-									//lvar_cnt++ ;
+									linstall($3,lt_num,lvar_cnt+1) ; 
+									lvar_cnt++ ;
 								}
 	;
 
@@ -343,8 +340,7 @@ void linstall(char *name, int type, int binding)
 		l->next = ltable ;
 		ltable = l ;
 
-		printf("%d %s\n",lvar_cnt,name) ;
-		lvar_cnt++ ;
+		//lvar_cnt++ ;
 	}
 	return ;
 }
@@ -675,6 +671,9 @@ void codegen_main(node *e)
 	fprintf(fp,"MOV BP, %d\n",stack_start) ; //specifying the beginning of stack
 	fprintf(fp,"MOV SP, %d\n",stack_start-1) ;
 
+	fprintf(fp,"PUSH BP\n") ;
+	fprintf(fp,"MOV BP, SP\n") ;
+
 	for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
 		fprintf(fp,"PUSH R0\n") ;
 
@@ -686,6 +685,8 @@ void codegen_main(node *e)
 
 	for(i=1;i<=lvar_cnt;++i)	//space for local variables in stack
 		fprintf(fp,"POP R0\n") ;
+
+	fprintf(fp,"POP BP\n") ;	
 
 	fprintf(fp,"HALT\n") ;
 	fclose(fp) ;
@@ -905,7 +906,7 @@ int codegen(node *e)
 									fprintf(fp,"MOV [R%d], R%d\n",reg_cnt,a) ;
 
 									for(i=1;i<=lvar_cnt;++i)
-										fprintf(fp,"POP R%d\n",i) ;
+										fprintf(fp,"POP R0\n") ;
 
 									fprintf(fp,"POP BP\n") ;
 									fprintf(fp,"RET\n\n\n\n") ;
@@ -923,7 +924,6 @@ int codegen(node *e)
 //function call impementation
 
 		case 5 		:	//Actions by caller before call
-					arg_cnt = 0 ;
 
 					for(i=0;i<reg_cnt;++i)
 						fprintf(fp,"PUSH R%d\n",i) ;
@@ -953,18 +953,21 @@ int codegen(node *e)
 					next_reg() ;
 
 									//pop arguments
-
+					arg_cnt = 0 ;					
 					e_arg = e->st1 ;
 					while(e_arg != NULL)
 					{
 						if(e_arg->node_type == -2) //change value in original location for reference type
 						{
-							fprintf(fp,"MOV R%d, %d\n",reg_cnt,reg_cnt) ;
+							//MOV [BP+a], [BP+lvar_cnt+reg_cnt_old+arg_cnt+1]
+							fprintf(fp,"MOV R%d, %d\n",reg_cnt,reg_cnt) ; //since reg_cnt = reg_cnt_old + 1
 							next_reg() ;
+							fprintf(fp,"MOV R%d, %d\n",reg_cnt,lvar_cnt) ;
+							fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
+
 						        fprintf(fp,"MOV R%d, BP\n",reg_cnt) ; 
 						        fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
-							free_reg() ;
-							next_reg() ;
+
 							fprintf(fp,"MOV R%d, %d\n",reg_cnt,arg_cnt) ;
 							fprintf(fp,"ADD R%d, R%d\n",reg_cnt-1,reg_cnt) ;
 							free_reg() ;
